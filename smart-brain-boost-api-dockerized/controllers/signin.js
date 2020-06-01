@@ -6,9 +6,9 @@ const redis = require('redis');
 // You will want to update your host to the proper address in production
 const redisClient = redis.createClient(process.env.REDIS_URI);
 
-const signToken = (username) => {
+const signToken = (email) => {
   const jwtPayload = {
-    username
+    email
   };
   return jwt.sign(jwtPayload, 'JWT_SECRET_KEY', {
     expiresIn: '2 days'
@@ -51,12 +51,12 @@ const handleSignin = (db, bcrypt, req, res) => {
         return db.select('*').from('users')
           .where('email', '=', email)
           .then(user => user[0])
-          .catch(err => res.status(400).json('unable to get user'))
+          .catch(err => Promise.reject('unable to get user'));
       } else {
         return Promise.reject('wrong credentials');
       }
     })
-    .catch(err => err)
+    .catch(err => Promise.reject('wrong credentials'));
 }
 
 const getAuthTokenId = (req, res) => {
@@ -65,22 +65,35 @@ const getAuthTokenId = (req, res) => {
   } = req.headers;
   return redisClient.get(authorization, (err, reply) => {
     if (err || !reply) {
-      return res.status(401).send('Unauthorized');
+      return res.status(400).send('Unauthorized');
     }
-    return res.json({
+    return res.status(200).json({
       id: reply
     })
-  });
+  })
 }
+
+// (err, reply) => {
+//   if (err || !reply) {
+//     return res.status(401).send('Unauthorized');
+//   }
+//   return res.json({
+//     id: reply
+//   })
+// }
 
 const signinAuthentication = (db, bcrypt) => (req, res) => {
   const {
     authorization
   } = req.headers;
+
   return authorization ? getAuthTokenId(req, res) :
     handleSignin(db, bcrypt, req, res)
     .then(data => data.id && data.email ? createSession(data) : Promise.reject(data))
-    .then(session => res.json(session))
+    .then(session => {
+      // console.log(session);
+      return res.json(session);
+    })
     .catch(err => res.status(400).json(err));
 }
 
